@@ -6,18 +6,28 @@ Python has None, SQLite has NULL, conversion is automatic in both ways.
 import sqlite3
 from typing import List, Any, Optional
 import threading
+import logging
 
 
 class SQLiteDB:
+    _instance = None
     _lock = threading.RLock()
-    name = "Fides SQLiteDB"
+    name = "Prometheus - SQLiteDB"
 
-    def __init__(self, db_path: str) -> None:
+    def __new__(cls, db_path: str):
+        """
+        Singleton constructor
+        :param db_path: path to database file, if the file does not exist, it will be created.
+        """
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(SQLiteDB, cls).__new__(cls)
+                cls._instance._init_db(db_path)
+        return cls._instance
+
+    def _init_db(self, db_path: str) -> None:
         """
         Initializes the SQLiteDB instance, sets up logging, and connects to the database.
-
-        :param logger: Logger for logging debug information.
-        :param db_path: Path where the SQLite database will be stored.
         """
         self.db_path = db_path
         with open(self.db_path, "a") as f:
@@ -31,12 +41,24 @@ class SQLiteDB:
         """
         Establishes a connection to the SQLite database.
         """
-        self.__slips_log(f"Connecting to SQLite database at {self.db_path}")
+        logging.info(f"Connecting to SQLite database at {self.db_path}")
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
 
         if self.connection is None:
-            self.__slips_log("Failed to connect to the SQLite database!")
+            logging.error("Failed to connect to the SQLite database!")
             raise ConnectionError("SQLite connection failed")
+
+    def dump_nodes(self) -> List[Any]:
+        """
+        Retrieves all data from the Nodes table.
+        """
+        return self.query("SELECT * FROM Nodes")
+
+    def query(self, query: str, params: Optional[List[Any]] = None) -> List[Any]:
+        """
+        Queries the database and returns results.
+        """
+        return self.__execute_query(query, params)
 
     def __execute_query(
         self, query: str, params: Optional[List[Any]] = None
@@ -49,7 +71,7 @@ class SQLiteDB:
         :return: List of results returned from the executed query.
         """
         with SQLiteDB._lock:
-            self.__slips_log(f"Executing query: {query}")
+            logging.info(f"Executing query: {query}")
             cursor = self.connection.cursor()
 
             # Split the query string by semicolons to handle multiple queries
@@ -66,7 +88,7 @@ class SQLiteDB:
                 self.connection.commit()
                 return cursor.fetchall()
             except Exception as e:
-                self.logger.error(f"Error executing query: {e}")
+                logging.error(f"Error executing query: {e}")
                 raise
             finally:
                 cursor.close()  # Ensure the cursor is always closed
@@ -82,7 +104,7 @@ class SQLiteDB:
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" * len(data))
         query = f"INSERT OR REPLACE INTO {table} ({columns}) VALUES ({placeholders})"
-        self.__slips_log(f"Saving data: {data} into table: {table}")
+        logging.info(f"Saving data: {data} into table: {table}")
         self.__execute_query(query, list(data.values()))
 
     def __delete(
@@ -97,7 +119,7 @@ class SQLiteDB:
         :return: None
         """
         query = f"DELETE FROM {table} WHERE {condition}"
-        self.__slips_log(f"Deleting from table: {table} where {condition}")
+        logging.info(f"Deleting from table: {table} where {condition}")
         self.__execute_query(query, params)
 
     def close(self) -> None:
@@ -105,7 +127,7 @@ class SQLiteDB:
         Closes the SQLite database connection.
         """
         if self.connection:
-            self.__slips_log("Closing database connection")
+            logging.info("Closing database connection")
             self.connection.close()
 
     def __create_tables(self) -> None:
@@ -148,5 +170,5 @@ class SQLiteDB:
 
 
         for query in table_creation_queries:
-            self.__slips_log(f"Creating tables with query: {query}")
+            logging.info(f"Creating tables with query: {query}")
             self.__execute_query(query)
