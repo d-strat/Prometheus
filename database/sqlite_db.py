@@ -48,17 +48,50 @@ class SQLiteDB:
             logging.error("Failed to connect to the SQLite database!")
             raise ConnectionError("SQLite connection failed")
 
+    def add_node_activity(self, node_id: int) -> None:
+        """
+        Inserts or updates a record in the NodeActivity table.
+        :param node_id: The ID of the node to associate the activity with.
+        """
+        data = {"node_id": node_id}
+        query = f"""
+            INSERT OR REPLACE INTO NodeActivity (node_id, activity_timestamp)
+            VALUES (?, CURRENT_TIMESTAMP)
+        """
+        logging.info(f"Adding/updating activity for node ID: {node_id}")
+        self.__execute_query(query, [node_id])
+
+    def get_node_activity(self, node_id: Optional[int] = None) -> List[Any]:
+        """
+        Retrieves activity records for all nodes or a specific node.
+        :param node_id: Optional ID of the node to filter activities.
+        :return: List of activity records.
+        """
+        query = "SELECT * FROM NodeActivity"
+        params = []
+        if node_id is not None:
+            query += " WHERE node_id = ?"
+            params.append(node_id)
+        logging.info(f"Fetching activity for node ID: {node_id if node_id else 'all nodes'}")
+        return self.__execute_query(query, params)
+
     def dump_nodes(self) -> List[Any]:
         """
         Retrieves all data from the Nodes table.
         """
-        return self.query("SELECT * FROM Nodes")
+        return self.__execute_query("SELECT * FROM Nodes")
 
-    def query(self, query: str, params: Optional[List[Any]] = None) -> List[Any]:
+    def remove_old_nodes(self, seconds: int) -> None:
         """
-        Queries the database and returns results.
+        Removes nodes from the Nodes table if their last activity timestamp is older than the given time in seconds.
+        :param seconds: Time in seconds to check for outdated nodes.
         """
-        return self.__execute_query(query, params)
+        condition = "id IN (SELECT node_id FROM NodeActivity WHERE activity_timestamp <= datetime('now', ?))"
+        params = [f'-{seconds} seconds']
+        logging.info(f"Removing nodes with activity older than {seconds} seconds")
+        self.__delete("Nodes", condition, params)
+        condition_na = "activity_timestamp <= datetime('now', ?)"
+        self.__delete("NodeActivity", condition_na, params)
 
     def __execute_query(
         self, query: str, params: Optional[List[Any]] = None
@@ -136,21 +169,19 @@ class SQLiteDB:
         """
         table_creation_queries = [
             """
-            CREATE TABLE Nodes (
+            CREATE TABLE IF NOT EXISTS Nodes (
                 id SERIAL PRIMARY KEY,
-                ip_version ENUM('IPv4', 'IPv6') NOT NULL,
+                ip_version TEXT CHECK (ip_version IN ('IPv4', 'IPv6')) NOT NULL,
                 ip_address VARCHAR(45) NOT NULL,
-                udp_tcp ENUM('UDP', 'TCP') NOT NULL,
+                udp_tcp TEXT CHECK (udp_tcp IN ('UDP', 'TCP')) NOT NULL,
                 port INT CHECK (port BETWEEN 1 AND 65535) NOT NULL,
-                protocol VARCHAR(20) NOT NULL
-                public_key VARCHAR(128) NOT NULL,
+                protocol VARCHAR(20) NOT NULL,
+                public_key VARCHAR(128) NOT NULL
             );
-
             """,
             """
-            CREATE TABLE NodeActivity (
-                activity_id SERIAL PRIMARY KEY,
-                node_id INT NOT NULL,
+            CREATE TABLE IF NOT EXISTS NodeActivity (
+                node_id INTEGER PRIMARY KEY,
                 activity_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (node_id) REFERENCES Nodes(id) ON DELETE CASCADE
             );
