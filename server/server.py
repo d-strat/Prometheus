@@ -6,7 +6,7 @@ import sys
 import logging
 
 
-class TCPJsonServer:
+class TCPServer:
     def __init__(self, host='0.0.0.0', port=12345):
         self.host = host
         self.port = port
@@ -50,6 +50,7 @@ class TCPJsonServer:
             except Exception as e:
                 logging.error(f"Error accepting connection: {e}")
 
+        signal_thread.
         self.shutdown()
 
     def shutdown(self):
@@ -65,7 +66,7 @@ class TCPJsonServer:
 
 
 if __name__ == "__main__":
-    server = TCPJsonServer()
+    server = TCPServer()
 
     # Start the server
     server.start()
