@@ -13,6 +13,9 @@ class TCPJsonServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
+
+        # Set up logging
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         logging.info(f"Server listening on {self.host}:{self.port}")
         self.is_running = True  # Server state
 
@@ -34,6 +37,11 @@ class TCPJsonServer:
             client_socket.close()
 
     def start(self):
+        # Start the signal handling in a separate thread
+        signal_thread = threading.Thread(target=self.handle_signals)
+        signal_thread.daemon = True  # Ensure this thread exits when the main program exits
+        signal_thread.start()
+
         while self.is_running:
             try:
                 client_socket, client_address = self.server_socket.accept()
